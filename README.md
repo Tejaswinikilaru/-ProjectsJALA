@@ -1,2 +1,2 @@
-# -ProjectsJALA
+# ProjectsJALA
 Implementing real time projects
