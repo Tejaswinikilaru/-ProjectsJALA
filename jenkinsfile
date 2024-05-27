@@ -1,0 +1,60 @@
+IIpipeline {
+    agent any
+    environment {
+        AWS_CREDENTIALS = credentials('aws-credentials')
+        ECR_REPO = 'your-ecr-repo-url'
+        K8S_CLUSTER_NAME = 'your-cluster-name'
+        K8S_NAMESPACE = 'your-namespace'
+    }
+    stages {
+        stage('Clone repository') {
+            steps {
+                git url: 'https://github.com/your-repo.git', branch: 'main'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def imageName = "${env.ECR_REPO}:${env.BUILD_NUMBER}"
+                    sh "docker build -t ${imageName} ."
+                }
+            }
+        }
+        stage('Run Unit Tests') {
+            steps {
+                sh 'docker run your-ecr-repo:${env.BUILD_NUMBER} pytest'
+            }
+        }
+        stage('Push Docker Image to ECR') {
+            steps {
+                script {
+                    def imageName = "${env.ECR_REPO}:${env.BUILD_NUMBER}"
+                    sh """
+                    $(aws ecr get-login --no-include-email --region us-east-1)
+                    docker tag ${imageName} ${imageName}
+                    docker push ${imageName}
+                    """
+                }
+            }
+        }
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def imageName = "${env.ECR_REPO}:${env.BUILD_NUMBER}"
+                    sh """
+                    kubectl set image deployment/your-deployment your-container=${imageName} --namespace=${env.K8S_NAMESPACE}
+                    kubectl rollout status deployment/your-deployment --namespace=${env.K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            emailext subject: "Job ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} Status",
+                     body: "Job ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}: ${currentBuild.currentResult}\nSee details at: ${env.BUILD_URL}",
+                     recipientProviders: [[$class: 'DevelopersRecipientProvider']]
+        }
+    }
+}
+
